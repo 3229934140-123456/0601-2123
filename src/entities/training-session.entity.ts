@@ -77,15 +77,15 @@ export class TrainingSession {
   @Column()
   planId: string;
 
-  @ManyToMany(() => User)
+  @ManyToMany(() => User, { cascade: true })
   @JoinTable({ name: 'session_coaches' })
   coaches: User[];
 
-  @ManyToMany(() => AthleteGroup)
+  @ManyToMany(() => AthleteGroup, { cascade: true })
   @JoinTable({ name: 'session_groups' })
   targetGroups: AthleteGroup[];
 
-  @ManyToMany(() => User)
+  @ManyToMany(() => User, { cascade: true })
   @JoinTable({ name: 'session_athletes' })
   targetAthletes: User[];
 

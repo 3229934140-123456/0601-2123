@@ -28,7 +28,7 @@ export class AthleteGroup {
   @Column()
   teamId: string;
 
-  @ManyToMany(() => User)
+  @ManyToMany(() => User, { cascade: true })
   @JoinTable({ name: 'group_athletes' })
   athletes: User[];
 

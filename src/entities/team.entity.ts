@@ -28,10 +28,10 @@ export class Team {
   @Column({ nullable: true })
   sportType: string;
 
-  @ManyToMany(() => User, (user) => user.coachedTeams)
+  @ManyToMany(() => User, (user) => user.coachedTeams, { cascade: true })
   coaches: User[];
 
-  @ManyToMany(() => User, (user) => user.teams)
+  @ManyToMany(() => User, (user) => user.teams, { cascade: true })
   athletes: User[];
 
   @OneToMany(() => AthleteGroup, (group) => group.team)

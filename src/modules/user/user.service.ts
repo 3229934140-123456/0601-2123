@@ -51,13 +51,18 @@ export class UserService {
   }
 
   async findByUsername(username: string): Promise<User | null> {
-    return this.userRepository.findOne({ where: { username } });
+    return this.userRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.username = :username', { username })
+      .getOne();
   }
 
   async update(id: string, userData: Partial<User>): Promise<User> {
     const user = await this.findById(id);
     Object.assign(user, userData);
-    return this.userRepository.save(user);
+    await this.userRepository.save(user);
+    return this.findById(id);
   }
 
   async delete(id: string): Promise<void> {

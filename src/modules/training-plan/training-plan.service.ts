@@ -125,24 +125,36 @@ export class TrainingPlanService {
     const session = await this.getSessionById(id);
     Object.assign(session, sessionData);
 
-    if (sessionData.coachIds?.length) {
-      session.coaches = await this.userRepository.findBy({
-        id: In(sessionData.coachIds),
-        role: UserRole.COACH,
-      });
+    if (sessionData.coachIds !== undefined) {
+      if (sessionData.coachIds.length === 0) {
+        session.coaches = [];
+      } else {
+        session.coaches = await this.userRepository.findBy({
+          id: In(sessionData.coachIds),
+          role: UserRole.COACH,
+        });
+      }
     }
 
-    if (sessionData.groupIds?.length) {
-      session.targetGroups = await this.groupRepository.findBy({
-        id: In(sessionData.groupIds),
-      });
+    if (sessionData.groupIds !== undefined) {
+      if (sessionData.groupIds.length === 0) {
+        session.targetGroups = [];
+      } else {
+        session.targetGroups = await this.groupRepository.findBy({
+          id: In(sessionData.groupIds),
+        });
+      }
     }
 
-    if (sessionData.athleteIds?.length) {
-      session.targetAthletes = await this.userRepository.findBy({
-        id: In(sessionData.athleteIds),
-        role: UserRole.ATHLETE,
-      });
+    if (sessionData.athleteIds !== undefined) {
+      if (sessionData.athleteIds.length === 0) {
+        session.targetAthletes = [];
+      } else {
+        session.targetAthletes = await this.userRepository.findBy({
+          id: In(sessionData.athleteIds),
+          role: UserRole.ATHLETE,
+        });
+      }
     }
 
     return this.sessionRepository.save(session);
@@ -206,6 +218,7 @@ export class TrainingPlanService {
     const now = new Date();
     const qb = this.sessionRepository
       .createQueryBuilder('session')
+      .leftJoinAndSelect('session.coaches', 'coaches')
       .leftJoin('session.targetGroups', 'targetGroups')
       .leftJoin('targetGroups.athletes', 'groupAthletes')
       .leftJoin('session.targetAthletes', 'targetAthletes')
