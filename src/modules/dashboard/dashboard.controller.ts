@@ -53,12 +53,39 @@ export class DashboardController {
     return this.dashboardService.getDashboardForTeam(teamId, date);
   }
 
-  @Get('weekly-calendar/:teamId')
+  @Get('weekly-calendar')
   async getWeeklyCalendar(
+    @Request() req,
+    @Query('teamId') teamId?: string,
+    @Query('coachId') coachId?: string,
+    @Query('groupId') groupId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const viewerCoachId = req.user?.role === UserRole.COACH ? req.user.sub : undefined;
+    return this.dashboardService.getWeeklyCalendar({
+      teamId,
+      coachId,
+      groupId,
+      startDate,
+      endDate,
+      viewerCoachId,
+    });
+  }
+
+  @Get('weekly-calendar/:teamId')
+  async getTeamWeeklyCalendar(
+    @Request() req,
     @Param('teamId') teamId: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.dashboardService.getWeeklyCalendar(teamId, startDate, endDate);
+    const viewerCoachId = req.user?.role === UserRole.COACH ? req.user.sub : undefined;
+    return this.dashboardService.getWeeklyCalendar({
+      teamId,
+      startDate,
+      endDate,
+      viewerCoachId,
+    });
   }
 }

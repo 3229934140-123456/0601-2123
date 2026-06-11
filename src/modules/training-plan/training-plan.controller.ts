@@ -244,6 +244,47 @@ export class TrainingPlanController {
     );
   }
 
+  @Get('sessions/conflicts')
+  @Roles(UserRole.COACH, UserRole.ADMIN)
+  async checkConflicts(
+    @Query('planId') planId: string,
+    @Query('startTime') startTime: string,
+    @Query('endTime') endTime: string,
+    @Query('excludeSessionId') excludeSessionId?: string,
+  ) {
+    return this.trainingPlanService.detectConflicts({
+      planId,
+      startTime: new Date(startTime),
+      endTime: new Date(endTime),
+      excludeSessionId,
+    });
+  }
+
+  @Post('sessions/conflicts')
+  @Roles(UserRole.COACH, UserRole.ADMIN)
+  async checkConflictsDetailed(
+    @Body()
+    body: {
+      planId: string;
+      startTime: string;
+      endTime: string;
+      coachIds?: string[];
+      groupIds?: string[];
+      athleteIds?: string[];
+      excludeSessionId?: string;
+    },
+  ) {
+    return this.trainingPlanService.detectConflicts({
+      planId: body.planId,
+      startTime: new Date(body.startTime),
+      endTime: new Date(body.endTime),
+      coachIds: body.coachIds,
+      groupIds: body.groupIds,
+      athleteIds: body.athleteIds,
+      excludeSessionId: body.excludeSessionId,
+    });
+  }
+
   @Get('sessions/:id')
   async getSessionById(@Param('id') id: string) {
     return this.trainingPlanService.getSessionById(id);

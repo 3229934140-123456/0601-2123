@@ -256,4 +256,121 @@ export class TrainingPlanService {
 
     return Array.from(athleteMap.values());
   }
+
+  async detectConflicts(options: {
+    planId: string;
+    startTime: Date;
+    endTime: Date;
+    coachIds?: string[];
+    groupIds?: string[];
+    athleteIds?: string[];
+    excludeSessionId?: string;
+  }): Promise<{
+    hasConflict: boolean;
+    conflicts: Array<{
+      type: 'team' | 'coach' | 'group' | 'athlete';
+      conflictId?: string;
+      conflictName?: string;
+      session: {
+        id: string;
+        title: string;
+        startTime: Date;
+        endTime: Date;
+        type: string;
+        location?: string;
+      };
+      overlapMinutes: number;
+    }>;
+  }> {
+    const { planId, startTime, endTime, coachIds, groupIds, athleteIds, excludeSessionId } = options;
+
+    const plan = await this.planRepository.findOne({ where: { id: planId } });
+    if (!plan) {
+      throw new NotFoundException('训练计划不存在');
+    }
+
+    const conflicts: any[] = [];
+
+    const allOverlappingSessions = await this.sessionRepository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.plan', 'plan')
+      .leftJoinAndSelect('session.coaches', 'coaches')
+      .leftJoinAndSelect('session.targetGroups', 'targetGroups')
+      .leftJoinAndSelect('session.targetAthletes', 'targetAthletes')
+      .where('plan.teamId = :teamId', { teamId: plan.teamId })
+      .andWhere('session.startTime < :endTime', { endTime })
+      .andWhere('session.endTime > :startTime', { startTime })
+      .getMany();
+
+    const filteredSessions = excludeSessionId
+      ? allOverlappingSessions.filter((s) => s.id !== excludeSessionId)
+      : allOverlappingSessions;
+
+    for (const session of filteredSessions) {
+      const overlapStart = new Date(Math.max(startTime.getTime(), session.startTime.getTime()));
+      const overlapEnd = new Date(Math.min(endTime.getTime(), session.endTime.getTime()));
+      const overlapMinutes = Math.max(0, Math.floor((overlapEnd.getTime() - overlapStart.getTime()) / 60000));
+
+      if (overlapMinutes <= 0) continue;
+
+      const sessionInfo = {
+        id: session.id,
+        title: session.title,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        type: session.type,
+        location: session.location,
+      };
+
+      conflicts.push({
+        type: 'team' as const,
+        session: sessionInfo,
+        overlapMinutes,
+      });
+
+      if (coachIds?.length && session.coaches?.length) {
+        const commonCoaches = session.coaches.filter((c) => coachIds.includes(c.id));
+        for (const coach of commonCoaches) {
+          conflicts.push({
+            type: 'coach' as const,
+            conflictId: coach.id,
+            conflictName: coach.name,
+            session: sessionInfo,
+            overlapMinutes,
+          });
+        }
+      }
+
+      if (groupIds?.length && session.targetGroups?.length) {
+        const commonGroups = session.targetGroups.filter((g) => groupIds.includes(g.id));
+        for (const group of commonGroups) {
+          conflicts.push({
+            type: 'group' as const,
+            conflictId: group.id,
+            conflictName: group.name,
+            session: sessionInfo,
+            overlapMinutes,
+          });
+        }
+      }
+
+      if (athleteIds?.length && session.targetAthletes?.length) {
+        const commonAthletes = session.targetAthletes.filter((a) => athleteIds.includes(a.id));
+        for (const athlete of commonAthletes) {
+          conflicts.push({
+            type: 'athlete' as const,
+            conflictId: athlete.id,
+            conflictName: athlete.name,
+            session: sessionInfo,
+            overlapMinutes,
+          });
+        }
+      }
+    }
+
+    return {
+      hasConflict: conflicts.length > 0,
+      conflicts,
+    };
+  }
 }

@@ -56,6 +56,12 @@ export interface TrainingReminder {
     groupName?: string;
     groupId?: string;
   };
+  participationReasons: Array<{
+    type: 'group' | 'individual';
+    groupName?: string;
+    groupId?: string;
+    priority: number;
+  }>;
 }
 
 export interface WeeklyCalendar {
@@ -77,6 +83,7 @@ export interface WeeklyCalendar {
       sessionCoaches: Array<{ id: string; name: string }>;
       targetGroups: Array<{ id: string; name: string }>;
       targetAthleteCount: number;
+      isMine: boolean;
     }>;
   }>;
 }
@@ -195,24 +202,27 @@ export class DashboardService {
     const coaches = (session.coaches || []).map((c) => this.formatCoach(c));
     const remaining = dayjs(session.startTime).diff(dayjs(), 'minute');
 
-    let participationReason: TrainingReminder['participationReason'] = {
-      type: 'individual',
-    };
+    const isIndividual = session.targetAthletes?.some((a) => a.id === athleteId);
+    const matchedGroups: Array<{ id: string; name: string }> = [];
 
-    if (session.targetAthletes?.some((a) => a.id === athleteId)) {
-      participationReason = { type: 'individual' };
-    } else if (session.targetGroups?.length) {
+    if (session.targetGroups?.length) {
       for (const group of session.targetGroups) {
         if (group.athletes?.some((a) => a.id === athleteId)) {
-          participationReason = {
-            type: 'group',
-            groupName: group.name,
-            groupId: group.id,
-          };
-          break;
+          matchedGroups.push({ id: group.id, name: group.name });
         }
       }
     }
+
+    const reasons: Array<{ type: 'individual' | 'group'; groupName?: string; groupId?: string; priority: number }> = [];
+
+    if (isIndividual) {
+      reasons.push({ type: 'individual', priority: 1 });
+    }
+    for (const g of matchedGroups) {
+      reasons.push({ type: 'group', groupName: g.name, groupId: g.id, priority: 2 });
+    }
+
+    const primaryReason = reasons[0] || { type: 'individual' as const, priority: 1 };
 
     return {
       sessionId: session.id,
@@ -223,7 +233,12 @@ export class DashboardService {
       location: session.location || '',
       coaches,
       remainingMinutes: remaining > 0 ? remaining : 0,
-      participationReason,
+      participationReason: {
+        type: primaryReason.type,
+        groupName: primaryReason.groupName,
+        groupId: primaryReason.groupId,
+      },
+      participationReasons: reasons,
     };
   }
 
@@ -280,23 +295,44 @@ export class DashboardService {
     };
   }
 
-  async getWeeklyCalendar(teamId: string, startDate?: string, endDate?: string): Promise<WeeklyCalendar> {
-    const team = await this.teamService.findById(teamId);
+  async getWeeklyCalendar(options: {
+    teamId?: string;
+    coachId?: string;
+    groupId?: string;
+    startDate?: string;
+    endDate?: string;
+    viewerCoachId?: string;
+  }): Promise<WeeklyCalendar> {
+    const { teamId, coachId, groupId, startDate, endDate, viewerCoachId } = options;
     const start = startDate ? dayjs(startDate) : dayjs().startOf('week');
     const end = endDate ? dayjs(endDate) : start.add(6, 'day');
-    const startDt = start.startOf('day').toDate();
-    const endDt = end.endOf('day').toDate();
+    const rangeStart = start.startOf('day').toDate();
+    const rangeEnd = end.endOf('day').toDate();
 
-    const sessions = await this.sessionRepository
+    const qb = this.sessionRepository
       .createQueryBuilder('session')
       .leftJoinAndSelect('session.plan', 'plan')
       .leftJoinAndSelect('session.coaches', 'coaches')
       .leftJoinAndSelect('session.targetGroups', 'targetGroups')
-      .leftJoinAndSelect('session.targetAthletes', 'targetAthletes')
-      .where('plan.teamId = :teamId', { teamId })
-      .andWhere('session.startTime BETWEEN :start AND :end', { start: startDt, end: endDt })
-      .orderBy('session.startTime', 'ASC')
-      .getMany();
+      .leftJoinAndSelect('session.targetAthletes', 'targetAthletes');
+
+    if (teamId) {
+      qb.andWhere('plan.teamId = :teamId', { teamId });
+    }
+
+    if (coachId) {
+      qb.innerJoin('session.coaches', 'filter_coach', 'filter_coach.id = :coachId', { coachId });
+    }
+
+    if (groupId) {
+      qb.innerJoin('session.targetGroups', 'filter_group', 'filter_group.id = :groupId', { groupId });
+    }
+
+    qb.andWhere('session.startTime < :rangeEnd', { rangeEnd });
+    qb.andWhere('session.endTime > :rangeStart', { rangeStart });
+    qb.orderBy('session.startTime', 'ASC');
+
+    const sessions = await qb.getMany();
 
     const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
     const days: WeeklyCalendar['days'] = [];
@@ -308,29 +344,41 @@ export class DashboardService {
       const dayEnd = current.endOf('day');
 
       const daySessions = sessions.filter((s) => {
-        const sessionTime = dayjs(s.startTime);
-        return sessionTime.isAfter(dayStart) && sessionTime.isBefore(dayEnd);
+        const sessionStart = dayjs(s.startTime);
+        const sessionEnd = dayjs(s.endTime);
+        return sessionStart.isBefore(dayEnd) && sessionEnd.isAfter(dayStart);
       });
 
       days.push({
         date: current.format('YYYY-MM-DD'),
         dayOfWeek: dayNames[current.day()],
-        sessions: daySessions.map((s) => ({
-          id: s.id,
-          title: s.title,
-          type: s.type,
-          startTime: dayjs(s.startTime).format('HH:mm'),
-          endTime: dayjs(s.endTime).format('HH:mm'),
-          location: s.location || '',
-          sessionCoaches: (s.coaches || []).map((c) => this.formatCoach(c)),
-          targetGroups: (s.targetGroups || []).map((g) => this.formatGroup(g)),
-          targetAthleteCount: s.targetAthletes?.length || 0,
-        })),
+        sessions: daySessions.map((s) => {
+          const isMine = viewerCoachId
+            ? (s.coaches || []).some((c) => c.id === viewerCoachId)
+            : false;
+          return {
+            id: s.id,
+            title: s.title,
+            type: s.type,
+            startTime: dayjs(s.startTime).format('HH:mm'),
+            endTime: dayjs(s.endTime).format('HH:mm'),
+            location: s.location || '',
+            sessionCoaches: (s.coaches || []).map((c) => this.formatCoach(c)),
+            targetGroups: (s.targetGroups || []).map((g) => this.formatGroup(g)),
+            targetAthleteCount: s.targetAthletes?.length || 0,
+            isMine,
+          };
+        }),
       });
     }
 
+    let team: Team | null = null;
+    if (teamId) {
+      team = await this.teamService.findById(teamId);
+    }
+
     return {
-      teamId,
+      teamId: team?.id || '',
       teamName: team?.name || '',
       teamCoaches: (team?.coaches || []).map((c) => this.formatCoach(c)),
       startDate: start.format('YYYY-MM-DD'),
