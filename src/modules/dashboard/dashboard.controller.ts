@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { UserRole } from '../../entities/user.entity';
 
 @Controller('dashboard')
 @UseGuards(JwtAuthGuard)
@@ -49,5 +51,14 @@ export class DashboardController {
     @Query('date') date?: string,
   ) {
     return this.dashboardService.getDashboardForTeam(teamId, date);
+  }
+
+  @Get('weekly-calendar/:teamId')
+  async getWeeklyCalendar(
+    @Param('teamId') teamId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.dashboardService.getWeeklyCalendar(teamId, startDate, endDate);
   }
 }

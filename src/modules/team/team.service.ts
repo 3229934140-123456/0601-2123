@@ -24,22 +24,36 @@ export class TeamService {
 
     const team = this.teamRepository.create(teamData);
     team.coaches = [coach];
-    return this.teamRepository.save(team);
+    await this.teamRepository.save(team);
+    return this.findById(team.id);
   }
 
   async findAll(userId?: string, role?: UserRole): Promise<Team[]> {
-    const qb = this.teamRepository.createQueryBuilder('team')
-      .leftJoinAndSelect('team.coaches', 'coaches')
-      .leftJoinAndSelect('team.athletes', 'athletes')
-      .leftJoinAndSelect('team.groups', 'groups');
-
     if (userId && role === UserRole.COACH) {
-      qb.where('coaches.id = :userId', { userId });
-    } else if (userId && role === UserRole.ATHLETE) {
-      qb.where('athletes.id = :userId', { userId });
+      const coachTeams = await this.teamRepository
+        .createQueryBuilder('team')
+        .innerJoin('team.coaches', 'filter_coach', 'filter_coach.id = :userId', { userId })
+        .leftJoinAndSelect('team.coaches', 'coaches')
+        .leftJoinAndSelect('team.athletes', 'athletes')
+        .leftJoinAndSelect('team.groups', 'groups')
+        .getMany();
+      return coachTeams;
     }
 
-    return qb.getMany();
+    if (userId && role === UserRole.ATHLETE) {
+      const athleteTeams = await this.teamRepository
+        .createQueryBuilder('team')
+        .innerJoin('team.athletes', 'filter_athlete', 'filter_athlete.id = :userId', { userId })
+        .leftJoinAndSelect('team.coaches', 'coaches')
+        .leftJoinAndSelect('team.athletes', 'athletes')
+        .leftJoinAndSelect('team.groups', 'groups')
+        .getMany();
+      return athleteTeams;
+    }
+
+    return this.teamRepository.find({
+      relations: ['coaches', 'athletes', 'groups'],
+    });
   }
 
   async findById(id: string): Promise<Team> {
@@ -56,7 +70,8 @@ export class TeamService {
   async update(id: string, teamData: Partial<Team>): Promise<Team> {
     const team = await this.findById(id);
     Object.assign(team, teamData);
-    return this.teamRepository.save(team);
+    await this.teamRepository.save(team);
+    return this.findById(id);
   }
 
   async delete(id: string): Promise<void> {
