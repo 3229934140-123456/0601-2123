@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   ManyToMany,
   OneToMany,
+  JoinTable,
 } from 'typeorm';
 import { User } from './user.entity';
 import { AthleteGroup } from './athlete-group.entity';
@@ -29,9 +30,11 @@ export class Team {
   sportType: string;
 
   @ManyToMany(() => User, (user) => user.coachedTeams, { cascade: true })
+  @JoinTable({ name: 'team_coaches' })
   coaches: User[];
 
   @ManyToMany(() => User, (user) => user.teams, { cascade: true })
+  @JoinTable({ name: 'team_athletes' })
   athletes: User[];
 
   @OneToMany(() => AthleteGroup, (group) => group.team)

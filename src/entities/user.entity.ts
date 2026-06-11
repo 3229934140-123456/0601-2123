@@ -6,7 +6,6 @@ import {
   UpdateDateColumn,
   OneToMany,
   ManyToMany,
-  JoinTable,
 } from 'typeorm';
 import { Team } from './team.entity';
 import { InjuryRecord } from './injury-record.entity';
@@ -57,7 +56,6 @@ export class User {
   weight: number;
 
   @ManyToMany(() => Team, (team) => team.coaches)
-  @JoinTable({ name: 'team_coaches' })
   coachedTeams: Team[];
 
   @ManyToMany(() => Team, (team) => team.athletes)
